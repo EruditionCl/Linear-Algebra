@@ -44,9 +44,15 @@ def angle(u, v):
 def proj(u, v):
     return u.proj(v)
 
+def partition(u, v):
+    return u.partition(v)
+
 
     
 class DimensionError(Exception):
+    pass
+
+class UninvertibleMatrixError(Exception):
     pass
 
 class Vector:
@@ -81,6 +87,12 @@ class Vector:
     
     def orthogonaldecomp(self, other):
         return (self.proj(other), self - self.proj(other))
+    
+    def partition(self, other):
+        if isinstance(other, Vector):
+            return Vector(*[*self.values, *other.values])
+        else:
+            raise TypeError("Vector can only be partitioned by Vector class")
 
     def __str__(self):
         return str(self.values)
@@ -89,10 +101,14 @@ class Vector:
         return f"Vector{self.values}"
     
     def __getitem__(self, key):
-        return self.values[key-1]
+        return self.values[key]
     
     def __setitem__(self, key, value):
-        self.values[key-1] = value
+        self.values[key] = value
+        return self
+    
+    def __delitem__(self, key):
+        del self.values[key]
         return self
 
     def __neg__(self):
@@ -131,9 +147,12 @@ class Vector:
     def __matmul__(self, other):
         if isinstance(other, Vector):
             DimensionChecker(self, other)
-            return Vector(*(a * b for a, b in zip(self.values, other.values)))
+            return sum(a * b for a, b in zip(self.values, other.values))
         else:
             raise TypeError("__matmul__ accepts only vectors.")
+        
+    def __rmatmul__(self, other):
+        raise TypeError("Dot product without a vector is not meaningful")
     
     def __truediv__(self, other):
         if isinstance(other, (Vector, Matrix)):
@@ -162,46 +181,69 @@ class Matrix:
             VectorChecker(*args)
             instance.rowspace = [arg for arg in args]
 
-        instance.rows = len(instance.rowspace)
-        instance.columns = len(instance.rowspace[0])
-
         if instance.rows == instance.columns:
             instance.__class__ = SquareMatrix
         return instance   
 
     def __init__(self, *args):
         pass
+
+    @property
+    def rows(self):
+        return len(self.rowspace)   
+    
+    @property 
+    def columns(self):
+        return len(self.rowspace[0])
     
     def transpose(self):
-        return Matrix(*[Vector(*[self[i][j] for i in range(1, self.rows + 1)]) 
-                for j in range(1, self.columns + 1)])   
+        return Matrix(*[Vector(*[self[i][j] 
+                for i in range(0, self.rows)]) 
+                for j in range(0, self.columns)])   
     
     def gaussian(self):
-        for j in range(1, self.rows + 1):
+        for j in range(0, min(self.rows, self.columns)):
             if self[j][j] == 0:
-                self[j], self[j-1] = self[j-1], self[j]
-            self[j] = self[j] / self[j][j]
-            for i in range(j + 1, self.rows + 1):
-                self[i] = self[i] - self[i][j] * self[j]
+                for k in range(j + 1, self.rows):
+                    if self[k][j] != 0:
+                        self[j], self[k] = self[k], self[j]
+                        break
+            
+            if self[j][j] != 0:
+                self[j] = self[j] / self[j][j]
+                
+                for i in range(j + 1, self.rows):
+                    self[i] = self[i] - self[i][j] * self[j]
 
-        for i in range(1, self.rows + 1):
-            for j in range(1, self.rows + 1):
+        for i in range(0, self.rows):
+            for j in range(0, self.columns): 
                 self[i][j] += 0.0
         return round(self)
     
     def gaussjordan(self):
         self.gaussian()
-        for i in range(self.rows, 1, -1):
-            for j in range(1, i):
-                self[j] = self[j] - self[j][i]*self[i]
-        for i in range(1, self.rows + 1):
-            for j in range(1, self.rows + 1):
+        for i in range(min(self.rows, self.columns) - 1, 0, -1):
+            for j in range(i - 1, -1, -1):
+                factor = self[j][i]
+                self[j] = self[j] - factor * self[i]
+                
+        for i in range(0, self.rows):
+            for j in range(0, self.columns): 
                 self[i][j] += 0.0
         return round(self)
 
+    def partition(self, other):
+        if isinstance(other, Matrix):
+            if not self.rows == other.rows:
+                raise DimensionError("partition() only accepts matrices with equal rows")
+            return Matrix(*[(a.partition(b)) 
+                            for a, b in zip(self.rowspace, other.rowspace)])
+        else:
+            raise TypeError("Matrix can only be partitioned by Matrix class")
+
     def __eq__(self, other):
         if isinstance(other, Matrix):
-            return all(a == b for a, b in zip(self.rowspace, other.rowspace))
+            return all(a == b  for a, b in zip(self.rowspace, other.rowspace))
         else:
             return self == other
         
@@ -212,10 +254,14 @@ class Matrix:
         return '\n'.join(str(row) for row in self.rowspace)
     
     def __getitem__(self, key):
-        return self.rowspace[key-1]
+        return self.rowspace[key]
     
     def __setitem__(self, key, value):
-        self.rowspace[key-1] = value
+        self.rowspace[key] = value
+        return self
+    
+    def __delitem__(self, key):
+        del self.rowspace[key]
         return self
     
     def __neg__(self):
@@ -242,9 +288,25 @@ class Matrix:
     def __matmul__(self, other):
         if isinstance(other, Matrix):
             ValidateMatrixMultCompatibility(self, other)
-            return Matrix(*(a @ b for a, b in zip(self.rowspace, other.rowspace)))
+            return Matrix(*[Vector(*[self[j] @ other.transpose()[i] 
+                 for j in range(0, self.rows)]) 
+                 for i in range(0, other.columns)]).transpose()
         else:
             raise TypeError("__matmul__ accepts only matrices.")
+        
+    def __rmatmul__(self, other):
+        raise TypeError("Matrix Multiplication without a matrix is not meaningful")
+    
+    def __pow__(self, other):
+        if isinstance(other, (int)):
+            result = A
+            for _ in range(other-1):
+                result = result @ A
+            return result
+        else:
+            raise TypeError("Matrix exponentiation is only meaningful" \
+            "with integer powers.")
+
 
     def __rmul__(self, other):
         return self * other
@@ -262,27 +324,37 @@ class Matrix:
    
 class SquareMatrix(Matrix):
     def trace(self):
-        return sum(self[i][i] for i in range(1, self.rows + 1))
+        return sum(self[i][i] for i in range(0, self.rows))
+    
+    def inverse(self):
+        if self.gaussjordan()[self.rows-1] == Vector(*[0 for _ in range(self.rows)]):
+            raise UninvertibleMatrixError("This matrix is not invertible")
+
+        self = self.partition(SquareMatrix.identity(self.rows)).gaussjordan().transpose() 
+        del self.rowspace[0 : self.rows]
+        return self.transpose()
+    
+    @staticmethod
+    def identity(n):
+        return Matrix(*[Vector(*[1 if i == j else 0 
+                                 for j in range(n)]) 
+                                 for i in range(n)])
 
 
+            
 
-A = Matrix ((1, 2, 3),
-            (1, 2, 3),
-            (1, 2, 3),
-            (1, 2, 3))
+u = Vector(1, 1, 0)
+v = Vector(0, 1, 1)
 
-B = Matrix(Vector(3, 0, 0, 0),
-           Vector(0, 3, 0, 0),
-           Vector(0, 0, 3, 0))
+A = Matrix((10, 0, 0, 0),
+           (0, 1, 0, 0),
+           (0, 0, 14, 0),
+           (0, 0, 0, 1))
 
+B = Matrix((1, -2, 3),
+           (-3, 6, -9),
+           (1, 0, 0))
 
-
-
-print(A @ B)
-
-
-
-
-
+print(B.gaussjordan())
 
              
