@@ -47,6 +47,13 @@ def proj(u, v):
 def partition(u, v):
     return u.partition(v)
 
+def MustBeSquare(func):
+    def inner(self, *args, **kwargs):
+        if not self.is_square():
+            raise DimensionError("Matrix must be square")
+        return func(self, *args, **kwargs)
+    return inner
+
 
     
 class DimensionError(Exception):
@@ -168,25 +175,16 @@ class Vector:
 
 class Matrix:
 
-    def __new__(cls, *args):
-        instance = super().__new__(cls)
-        instance.__init__(*args)
-
+    def __init__(self, *args):
         if all(isinstance(arg, (list, tuple)) for arg in args):
             vectors = [Vector(*arg) for arg in args]
             VectorChecker(*vectors)
-            instance.rowspace = vectors
+            self.rowspace = vectors
 
         else:
             VectorChecker(*args)
-            instance.rowspace = [arg for arg in args]
-
-        if instance.rows == instance.columns:
-            instance.__class__ = SquareMatrix
-        return instance   
-
-    def __init__(self, *args):
-        pass
+            self.rowspace = [arg for arg in args]
+                
 
     @property
     def rows(self):
@@ -195,6 +193,25 @@ class Matrix:
     @property 
     def columns(self):
         return len(self.rowspace[0])
+    
+    def is_square(self):
+        return self.rows == self.columns
+    
+    def is_triangular(self):
+        return self.is_uppertriangular() or self.is_lowertriangular()
+
+    def is_uppertriangular(self):
+        return self.is_square() and all(self[i][j] == 0 
+                   for i in range(self.rows) 
+                   for j in range(self.rows) 
+                   if i > j)
+    
+    def is_lowertriangular(self):
+        return self.is_square() and all(self[i][j] == 0 
+                   for i in range(self.rows) 
+                   for j in range(self.rows) 
+                   if i < j)
+    
     
     def transpose(self):
         return Matrix(*[Vector(*[self[i][j] 
@@ -240,6 +257,56 @@ class Matrix:
                             for a, b in zip(self.rowspace, other.rowspace)])
         else:
             raise TypeError("Matrix can only be partitioned by Matrix class")
+        
+    @MustBeSquare
+    def plu(self):
+        n = self.rows
+        P = Matrix.identity(n)
+
+        for j in range(0, n):
+            if self[j][j] == 0:
+                for k in range(j + 1, n):
+                    if self[k][j] != 0:
+                        self[j], self[k] = self[k], self[j]
+                        P[j], P[k] = P[k], P[j]
+                        break
+
+            if self[j][j] != 0:
+                for i in range(j + 1, n):
+                    self[i][j] = self[i][j] / self[j][j]
+                    for k in range(j + 1, n):
+                        self[i][k] -= self[i][j] / self[j][j] * self[j][k]
+
+        L = Matrix.identity(n)
+        U = Matrix.identity(n)
+
+        for j in range(n):
+            for i in range(n):
+                if i < j:
+                    L[j][i] = self[j][i]
+                elif i >= j:
+                    U[j][i] = self[j][i]
+                
+        return P, L, U
+        
+    @MustBeSquare
+    def inverse(self):
+        n = self.rows
+        if self.copy().gaussjordan()[n - 1] == Vector(*[0 for _ in range(n)]):
+            raise UninvertibleMatrixError()
+        
+        A = self.partition(Matrix.identity(n)).gaussjordan()
+        return Matrix(*(Vector(*(A[i][j] 
+                                for j in range(n, 2*n))) 
+                                for i in range(n)))
+
+    @MustBeSquare
+    def trace(self):
+        return sum(self[i][i] for i in range(0, self.rows))
+
+
+    def copy(self):
+        return Matrix(*(row[:] for row in self.rowspace))
 
     def __eq__(self, other):
         if isinstance(other, Matrix):
@@ -307,7 +374,6 @@ class Matrix:
             raise TypeError("Matrix exponentiation is only meaningful" \
             "with integer powers.")
 
-
     def __rmul__(self, other):
         return self * other
     
@@ -321,40 +387,30 @@ class Matrix:
 
     def __rtruediv__(self, other):
         raise TypeError("Division by Matrix is not meaningful")
-   
-class SquareMatrix(Matrix):
-    def trace(self):
-        return sum(self[i][i] for i in range(0, self.rows))
-    
-    def inverse(self):
-        if self.gaussjordan()[self.rows-1] == Vector(*[0 for _ in range(self.rows)]):
-            raise UninvertibleMatrixError("This matrix is not invertible")
-
-        self = self.partition(SquareMatrix.identity(self.rows)).gaussjordan().transpose() 
-        del self.rowspace[0 : self.rows]
-        return self.transpose()
     
     @staticmethod
     def identity(n):
         return Matrix(*[Vector(*[1 if i == j else 0 
                                  for j in range(n)]) 
                                  for i in range(n)])
-
+   
 
             
 
 u = Vector(1, 1, 0)
 v = Vector(0, 1, 1)
 
-A = Matrix((10, 0, 0, 0),
+A = Matrix((0, 0, 0, 1),
            (0, 1, 0, 0),
            (0, 0, 14, 0),
+           (10, 0, 0, 0))
+
+B = Matrix((1, -2, 3, 4),
+           (1, 0, 1, 0),
+           (1, 0, 0, 0),
            (0, 0, 0, 1))
 
-B = Matrix((1, -2, 3),
-           (-3, 6, -9),
-           (1, 0, 0))
 
-print(B.gaussjordan())
-
+P, L, U = A.LU()
+print(P @ L @ U)
              
