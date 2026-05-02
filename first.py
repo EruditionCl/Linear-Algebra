@@ -28,6 +28,8 @@ def entry_checker(*args):
         raise TypeError("Vector class only accepts int and float")
     
 
+def sign(n):
+    return 1 if n >= 0 else -1
 
 
 def distance(u, v):
@@ -96,8 +98,10 @@ class Vector:
         dimension_checker(self, other)
         return math.acos(round((self.dot(other)) / (self.norm * other.norm)))
     
-    def proj(self, other):
+    def proj(self, other, eps = 10e-10):
         dimension_checker(self, other)
+        if other.norm ** 2 < eps:
+            return Vector.zero_vector(self.dimension)
         return (self.dot(other)/(pow(other.norm, 2))) * other
     
     def orthogonal_decomp(self, other):
@@ -127,6 +131,19 @@ class Vector:
         v = Matrix(self).transpose()
 
         return Vector(*((P @ v).transpose()))[0]
+    
+    def householder(self, eps = 10e-12):
+        if self.norm < eps:
+            return Matrix.identity(self.dimension)
+
+        I = Matrix.identity(self.dimension)
+        alpha = -sign(self.values[0]) * self.norm
+        v = Matrix(self - alpha * I[0]).transpose()
+
+        H = I - 2 * ((v @ v.transpose()) / ((v.transpose() @ v)[0][0]))
+
+        return H
+
         
     def __str__(self):
         return str(self.values)
@@ -154,7 +171,7 @@ class Vector:
     def __len__(self):
         return len(self.values)
     
-    def __round__(self, ndigits=10):
+    def __round__(self, ndigits = 12):
         return Vector(*[round(entry, ndigits) for entry in self.values])
     
     def __eq__(self, other):
@@ -229,8 +246,6 @@ class Vector:
 
     @staticmethod
     def gram_schmidt(*args):
-        if not Vector.basis(*args):
-            raise BasisVectorsError("gram_schmidt only accepts basis vectors")
 
         A = [*args]
         B = [A[0]]
@@ -243,9 +258,16 @@ class Vector:
         return A
     
     @staticmethod
-    def gram_schmidt_orthonormal(*args):
+    def gram_schmidt_orthonormal(*args, eps = 10e-10):
         A = Vector.gram_schmidt(*args)
-        return [A[i].normalize() for i in range(len(A))]
+        B = []
+
+        for i in range(len(A)):
+            if A[i].norm < eps:
+                continue
+            B.append(A[i].normalize())
+
+        return B
         
 
 class Matrix:
@@ -339,6 +361,33 @@ class Matrix:
                             for a, b in zip(self.rowspace, other.rowspace)])
         else:
             raise TypeError("Matrix can only be partitioned by Matrix class")
+
+    def qr(self):
+        A = copy.deepcopy(self)
+        Q = Matrix(*Vector.gram_schmidt_orthonormal(*A.transpose().rowspace)).transpose()
+        R = Q.transpose() @ A
+
+        return Q, R
+    
+    def qr_householder(self):
+        A = copy.deepcopy(self)
+        m, n = A.rows, A.columns
+        Q = Matrix.identity(m)
+
+        for k in range(min(m, n)):
+            x = Vector(*[A[i][k] for i in range(k, m)])
+            H_ = x.householder()
+            H = Matrix.identity(m)
+
+            for i in range(H_.rows):
+                for j in range(H_.rows):
+                    H[k + i][k + j] = H_[i][j]
+
+            A = H @ A
+            Q = Q @ H
+
+        R = A
+        return Q, R
         
     @must_be_square
     def plu(self):
@@ -378,6 +427,24 @@ class Matrix:
                 
         self._det_sign = det_sign
         return P, L, U
+    
+    @must_be_square
+    def hessenberg(self):
+        n = self.rows
+        A = copy.deepcopy(self)
+
+        for k in range(n - 2):
+            x = Vector(*[A[i][k] for i in range(k + 1, n)])
+            H = x.householder()
+            I = Matrix.identity(n)
+
+            for i in range(H.rows):
+                for j in range(H.rows):
+                    I[k + 1 + i][k + 1 + j] = H[i][j]
+            
+            A = I @ A @ I
+
+        return A
         
     @must_be_square
     def inverse(self):
@@ -398,14 +465,55 @@ class Matrix:
     def determinant(self):
         P, L, U = self.plu()
         return self._det_sign * math.prod(U[i][i] for i in range(self.rows))
+    
+    @must_be_square
+    def eigenvalues(self, eps = 10e-12):
+        A = copy.deepcopy(self)
+        n = A.rows
+        I = Matrix.identity(n)
+
+        if A.is_triangular():
+            return [A[i][i] for i in range(n)]
         
+        A = A.hessenberg()
+
+        while any(abs(A[i][i-1]) > eps for i in range(1, n)):
+
+            a = A[n-2][n-2]
+            b = A[n-2][n-1]
+            c = A[n-1][n-2]
+            d = A[n-1][n-1]
+
+            delta = (a - d) / 2
+
+            if (delta ** 2 + b * c) < 0:
+                raise ValueError("Imaginary Eigenvalues")
+            
+            mu = d - ((sign(delta) * b * c) / (abs(delta) + pow(delta ** 2 + b * c, 0.5))) 
+            # Wilkinson shift
+
+            A = A - mu * I
+            Q, R= A.qr_householder()
+            A = R @ Q + (mu * I)
+
+        return [A[i][i] for i in range(n)]
+
+    @must_be_square
+    def eigenvectors(self):
+        A = copy.deepcopy(self)
+        I = Matrix.identity(A.rows)
+        eigenvalues = A.eigenvalues()
+
+        for eigenvalue in eigenvalues:
+            B = (eigenvalue * I) - A
+
     def __eq__(self, other):
         if isinstance(other, Matrix):
             return all(a == b  for a, b in zip(self.rowspace, other.rowspace))
         else:
             return self == other
         
-    def __round__(self, ndigits=10):
+    def __round__(self, ndigits = 12):
         return Matrix(*[round(row, ndigits) for row in self.rowspace])
     
     def __str__(self):
@@ -446,9 +554,9 @@ class Matrix:
     def __matmul__(self, other):
         if isinstance(other, Matrix):
             validate_matrix_mult_compatibility(self, other)
-            return Matrix(*[Vector(*[self[j] @ other.transpose()[i] 
+            return round(Matrix(*[Vector(*[self[j] @ other.transpose()[i] 
                  for j in range(0, self.rows)]) 
-                 for i in range(0, other.columns)]).transpose()
+                 for i in range(0, other.columns)]).transpose())
         else:
             raise TypeError("__matmul__ accepts only matrices.")
         
@@ -504,15 +612,8 @@ class Matrix:
                                  for i in range(n)])
    
 
-v1 = Vector(1, 0, 0, 0, 1)
-v2 = Vector(0, 1, 0, 1, 0)
-v3 = Vector(0, 0, 1, 1, 1)
-v4 = Vector(1, 1, 0, 0, 0)
-v5 = Vector(0, 1, 1, 0, 0)
 
-v, w, x, y, z = Vector.gram_schmidt_orthonormal(v1, v2, v3, v4, v5)
-vectors = [v,w,x,y,z]
-print(vectors)
+
     
 
 
