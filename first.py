@@ -31,7 +31,6 @@ def entry_checker(*args):
 def sign(n):
     return 1 if n >= 0 else -1
 
-
 def distance(u, v):
     vector_checker(u, v)
     return (u-v).norm
@@ -48,12 +47,28 @@ def proj(u, v):
 def partition(u, v):
     return u.partition(v)
 
+EPS = 1e-10
+
+def is_nonapprox(a, b, eps=EPS):
+    return abs(a - b) >= eps * max(1.0, abs(a), abs(b))
+
+def is_approx(a, b, eps=EPS):
+    return abs(a - b) < eps * max(1.0, abs(a), abs(b))
+
+def is_zero(x, eps = EPS):
+    return abs(x) < eps
+
+def is_nonzero(x, eps = EPS):
+    return abs(x) >= eps
+
 def must_be_square(func):
     def inner(self, *args, **kwargs):
         if not self.is_square():
             raise DimensionError("Matrix must be square")
         return func(self, *args, **kwargs)
     return inner
+
+
 
 
     
@@ -72,7 +87,17 @@ class InfiniteSolutionsError(Exception):
 class BasisVectorsError(Exception):
     pass
 
-class Vector:
+class UndiagonalizableError(Exception):
+    pass
+
+
+
+class Tensor:
+    def __init__(self):
+        pass
+
+class Vector(Tensor):
+
     def __init__(self, *args):
         if isinstance(args, (tuple, list)):
             self.values = list(args)
@@ -98,9 +123,9 @@ class Vector:
         dimension_checker(self, other)
         return math.acos(round((self.dot(other)) / (self.norm * other.norm)))
     
-    def proj(self, other, eps = 10e-10):
+    def proj(self, other):
         dimension_checker(self, other)
-        if other.norm ** 2 < eps:
+        if is_zero((other.norm ** 2)):
             return Vector.zero_vector(self.dimension)
         return (self.dot(other)/(pow(other.norm, 2))) * other
     
@@ -132,15 +157,20 @@ class Vector:
 
         return Vector(*((P @ v).transpose()))[0]
     
-    def householder(self, eps = 10e-12):
-        if self.norm < eps:
-            return Matrix.identity(self.dimension)
-
+    def householder(self):
         I = Matrix.identity(self.dimension)
+        if is_zero(self.norm):
+            return I
+
         alpha = -sign(self.values[0]) * self.norm
         v = Matrix(self - alpha * I[0]).transpose()
 
-        H = I - 2 * ((v @ v.transpose()) / ((v.transpose() @ v)[0][0]))
+        denom = (v.transpose() @ v)[0][0]
+
+        if is_zero(denom):
+            return I
+
+        H = I - 2 * ((v @ v.transpose()) / denom )
 
         return H
 
@@ -175,7 +205,7 @@ class Vector:
         return Vector(*[round(entry, ndigits) for entry in self.values])
     
     def __eq__(self, other):
-        return all(a == b for a, b in zip(self.values, other.values))
+        return all(is_approx(a, b) for a, b in zip(self.values, other.values))
     
     def __add__(self, other):
         dimension_checker(self, other)
@@ -209,7 +239,7 @@ class Vector:
         if isinstance(other, (Vector, Matrix)):
             raise TypeError("__truediv__ only accepts scalars")
         elif isinstance(other, (int, float)):
-            return Vector(*(a/other for a in self.values))
+            return Vector(*(a / other for a in self.values))
         else:
             NotImplementedError(f"{type(other)} is not accounted for.")
 
@@ -258,19 +288,20 @@ class Vector:
         return A
     
     @staticmethod
-    def gram_schmidt_orthonormal(*args, eps = 10e-10):
+    def gram_schmidt_orthonormal(*args):
         A = Vector.gram_schmidt(*args)
         B = []
 
         for i in range(len(A)):
-            if A[i].norm < eps:
+            if is_zero(A[i].norm):
                 continue
             B.append(A[i].normalize())
 
         return B
         
 
-class Matrix:
+class Matrix(Tensor):
+
 
     def __init__(self, *args):
         if all(isinstance(arg, (list, tuple)) for arg in args):
@@ -304,54 +335,69 @@ class Matrix:
         return self.is_uppertriangular() or self.is_lowertriangular()
 
     def is_uppertriangular(self):
-        return self.is_square() and all(self[i][j] == 0 
+        return self.is_square() and all(is_zero(self[i][j])
                    for i in range(self.rows) 
                    for j in range(self.rows) 
                    if i > j)
     
     def is_lowertriangular(self):
-        return self.is_square() and all(self[i][j] == 0 
+        return self.is_square() and all(is_zero(self[i][j])
                    for i in range(self.rows) 
                    for j in range(self.rows) 
                    if i < j)
+    
+    def stabilize(self):
+        A = copy.deepcopy(self)
+        for i in range(A.rows):
+            for j in range(A.columns):
+                if is_zero(A[i][j]):
+                    A[i][j] = 0
+        return A
     
     def transpose(self):
         return Matrix(*[Vector(*[self[i][j] 
                 for i in range(0, self.rows)]) 
                 for j in range(0, self.columns)])   
     
-    def gaussian(self):
+    def gaussian(self, eps=EPS): # Added eps parameter
         A = copy.deepcopy(self)
-        for j in range(0, min(A.rows, A.columns)):
-            if A[j][j] == 0:
-                for k in range(j + 1, A.rows):
-                    if A[k][j] != 0:
-                        A[j], A[k] = A[k], A[j]
-                        break
-            
-            if A[j][j] != 0:
-                A[j] = A[j] / A[j][j]
-                
-                for i in range(j + 1, A.rows):
-                    A[i] = A[i] - A[i][j] * A[j]
+        m, n = A.rows, A.columns
 
-        for i in range(0, A.rows):
-            for j in range(0, A.columns): 
-                A[i][j] += 0.0
-        return round(A)
+        for j in range(min(m, n)):
+            pivot_row = max(range(j, m), key=lambda i: abs(A[i][j]))
+            col_scale = max(abs(A[i][j]) for i in range(j, m))
+
+            if col_scale == 0 or abs(A[pivot_row][j]) < eps * col_scale:
+                continue
+
+            if pivot_row != j:
+                A[j], A[pivot_row] = A[pivot_row], A[j]
+
+            pivot = A[j][j]
+            if is_zero(pivot, eps): continue 
+            A[j] = A[j] / pivot
+
+            for i in range(j + 1, m):
+                factor = A[i][j]
+                if abs(factor) < eps:
+                    A[i][j] = 0.0
+                    continue
+                A[i] = A[i] - factor * A[j]
+
+        A = A.stabilize()
+        return A
     
-    def gauss_jordan(self):
-        A = copy.deepcopy(self).gaussian()
+    def gauss_jordan(self, eps=EPS): # Added eps parameter
+        A = copy.deepcopy(self).gaussian(eps=eps) # Pass eps here
         
         for j in range(min(A.rows, A.columns)):
-                for i in range(A.rows):
-                    if i != j:
-                        A[i] = A[i] - A[i][j] * A[j]
-        
-        for i in range(A.rows):
-            for j in range(A.columns):
-                A[i][j] += 0.0
-        return round(A)   
+            for i in range(A.rows):
+                # Use is_nonapprox correctly (i is row, j is col)
+                if i != j and abs(A[i][j]) > eps: 
+                    A[i] = A[i] - A[i][j] * A[j]
+
+        A = A.stabilize()
+        return A
 
     def partition(self, other):
         if isinstance(other, Matrix):
@@ -361,12 +407,52 @@ class Matrix:
                             for a, b in zip(self.rowspace, other.rowspace)])
         else:
             raise TypeError("Matrix can only be partitioned by Matrix class")
+        
+    def homogeneous(self, eps=1e-4): # Use the looser default
+        A = copy.deepcopy(self)
+        # Pass the looser eps to gauss_jordan
+        A = A.gauss_jordan(eps=eps) 
+        m, n = A.rows, A.columns
+
+        # Zero out the matrix based on eps
+        for i in range(m):
+            for j in range(n):
+                if is_zero(A[i][j], eps):
+                    A[i][j] = 0.0
+            
+        pivot_map = [-1 for _ in range(n)]
+        for i in range(m):
+            for j in range(n):
+                if is_nonzero(A[i][j], eps):
+                    # Check if all previous in row are zero
+                    if all(is_zero(A[i][k], eps) for k in range(j)):
+                        pivot_map[j] = i
+                        break
+
+        basis_vectors = []
+
+        for j in range(n):
+            if pivot_map[j] == -1: # It is a free variable
+                v = Vector(*[0 for _ in range(n)])
+                v[j] = 1.0 
+                
+                for k in range(n):
+                    # FIX: Compare index k to -1, not using is_nonapprox
+                    if pivot_map[k] != -1: 
+                        r = pivot_map[k]
+                        # Correct sign: Ax = 0 => x_pivot = - A_pivot_free * x_free
+                        v[k] = -A[r][j] 
+                
+                basis_vectors.append(v)
+
+        return basis_vectors
 
     def qr(self):
         A = copy.deepcopy(self)
         Q = Matrix(*Vector.gram_schmidt_orthonormal(*A.transpose().rowspace)).transpose()
         R = Q.transpose() @ A
 
+        Q, R = Q.stabilize(), R.stabilize()
         return Q, R
     
     def qr_householder(self):
@@ -387,6 +473,7 @@ class Matrix:
             Q = Q @ H
 
         R = A
+        Q, R = Q.stabilize(), R.stabilize()
         return Q, R
         
     @must_be_square
@@ -397,15 +484,15 @@ class Matrix:
         det_sign = 1
 
         for j in range(0, n):
-            if A[j][j] == 0:
+            if is_zero(A[j][j]):
                 for k in range(j + 1, n):
-                    if A[k][j] != 0:
+                    if is_nonzero(A[k][j]):
                         A[j], A[k] = A[k], A[j]
                         P[j], P[k] = P[k], P[j]
                         det_sign *= -1
                         break
 
-            if A[j][j] != 0:
+            if is_nonzero(A[j][j]):
                 for i in range(j + 1, n):
                     A[i][j] = A[i][j] / A[j][j]
                     for k in range(j + 1, n):
@@ -426,6 +513,8 @@ class Matrix:
                     U[j][i] = A[j][i]
                 
         self._det_sign = det_sign
+
+        L, U = L.stabilize(), U.stabilize()
         return P, L, U
     
     @must_be_square
@@ -444,6 +533,8 @@ class Matrix:
             
             A = I @ A @ I
 
+        
+        A = A.stabilize()
         return A
         
     @must_be_square
@@ -467,7 +558,7 @@ class Matrix:
         return self._det_sign * math.prod(U[i][i] for i in range(self.rows))
     
     @must_be_square
-    def eigenvalues(self, eps = 10e-12):
+    def eigenvalues(self):
         A = copy.deepcopy(self)
         n = A.rows
         I = Matrix.identity(n)
@@ -477,7 +568,7 @@ class Matrix:
         
         A = A.hessenberg()
 
-        while any(abs(A[i][i-1]) > eps for i in range(1, n)):
+        while any(is_nonzero(A[i][i-1]) for i in range(1, n)):
 
             a = A[n-2][n-2]
             b = A[n-2][n-1]
@@ -485,11 +576,17 @@ class Matrix:
             d = A[n-1][n-1]
 
             delta = (a - d) / 2
-
-            if (delta ** 2 + b * c) < 0:
+            discriminant = delta ** 2 + b * c
+            
+            if discriminant < 0:
                 raise ValueError("Imaginary Eigenvalues")
             
-            mu = d - ((sign(delta) * b * c) / (abs(delta) + pow(delta ** 2 + b * c, 0.5))) 
+            denominator = abs(delta) + pow(discriminant, 0.5)
+
+            if is_zero(denominator):
+                mu = d 
+            else:
+                mu = d - ((sign(delta) * b * c) / denominator)
             # Wilkinson shift
 
             A = A - mu * I
@@ -498,18 +595,53 @@ class Matrix:
 
         return [A[i][i] for i in range(n)]
 
-    @must_be_square
     def eigenvectors(self):
+        A = copy.deepcopy(self)
+        eigenpairs = A.eigenpairs()
+
+        eigenvectors = [v for value in eigenpairs.values() 
+                        for v in (value if isinstance(value, list) 
+                                  else [value])]
+
+        return eigenvectors
+
+    
+    def eigenpairs(self):
         A = copy.deepcopy(self)
         I = Matrix.identity(A.rows)
         eigenvalues = A.eigenvalues()
 
+        eigenpairs = {}
         for eigenvalue in eigenvalues:
-            B = (eigenvalue * I) - A
+            B = A - (eigenvalue * I)
+            eigenpairs[eigenvalue] = B.homogeneous(eps=1e-4)
+
+        return eigenpairs
+
+
+    def diagonalize(self):
+        A = copy.deepcopy(self)
+        I = Matrix.identity(A.columns)
+        eigenvalues = A.eigenvalues()
+        eigenvectors = A.eigenvectors()
+
+        if Matrix(*eigenvectors).rank() != A.columns:
+            raise UndiagonalizableError("Matrix doesn't have " \
+            "n linear independent eigenvectors")
+        
+        P = Matrix(*eigenvectors).transpose()
+        D = I
+
+        for i in range(A.columns):
+            D[i][i] = eigenvalues[i]
+
+        P, D = P.stabilize(), D.stabilize()
+        return P, D, P.inverse()
+
 
     def __eq__(self, other):
         if isinstance(other, Matrix):
-            return all(a == b  for a, b in zip(self.rowspace, other.rowspace))
+            return all(is_approx(a, b) for a, b in zip(self.rowspace, other.rowspace))
         else:
             return self == other
         
@@ -556,7 +688,7 @@ class Matrix:
             validate_matrix_mult_compatibility(self, other)
             return round(Matrix(*[Vector(*[self[j] @ other.transpose()[i] 
                  for j in range(0, self.rows)]) 
-                 for i in range(0, other.columns)]).transpose())
+                 for i in range(0, other.columns)]).transpose().stabilize())
         else:
             raise TypeError("__matmul__ accepts only matrices.")
         
@@ -566,7 +698,7 @@ class Matrix:
     def __pow__(self, other):
         if isinstance(other, (int)):
             result = self
-            for _ in range(other-1):
+            for _ in range(other - 1):
                 result = result @ self
             return result
         else:
@@ -580,7 +712,7 @@ class Matrix:
         if isinstance(other, (Vector, Matrix)):
             raise TypeError("__truediv__ only accepts scalars")
         elif isinstance(other, (int, float)):
-            return Matrix(*(a/other for a in self.rowspace))
+            return Matrix(*(a / other for a in self.rowspace))
         else:
             NotImplementedError(f"{type(other)} is not accounted for.")
 
@@ -597,11 +729,12 @@ class Matrix:
         C = A.partition(Matrix(b).transpose()).gauss_jordan()
 
         for row in C:
-            if all(x == 0 for x in row[:-1]) and row[-1] != 0:
+            if all(is_zero(x) for x in row[:-1]) and is_nonzero(row[-1]):
                 raise InconsistentSystemError()
         
         if A.rank() < A.columns:
             raise InfiniteSolutionsError()
+        
         x = Vector(*[C[i][C.columns - 1] for i in range(C.rows)])
         return x
             
@@ -613,19 +746,3 @@ class Matrix:
    
 
 
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-             

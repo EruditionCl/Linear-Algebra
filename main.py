@@ -1,9 +1,11 @@
 
 from first import *
 
+A = Matrix([1, 2, 3],
+           [0, 4, 5],
+           [1, 0, 6])
 
-A = Matrix([1, 1, 1, 1],
-           [2, 2, 2, 2],
-           [3, 3, 3, 3])
+P, D, P_1 = A.diagonalize()
+print(P @ D @ P_1)
 
-print(A.gauss_jordan())
+
