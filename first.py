@@ -346,11 +346,11 @@ class Matrix(Tensor):
                    for j in range(self.rows) 
                    if i < j)
     
-    def stabilize(self):
+    def stabilize(self, eps = EPS):
         A = copy.deepcopy(self)
         for i in range(A.rows):
             for j in range(A.columns):
-                if is_zero(A[i][j]):
+                if is_zero(A[i][j], eps):
                     A[i][j] = 0
         return A
     
@@ -359,7 +359,7 @@ class Matrix(Tensor):
                 for i in range(0, self.rows)]) 
                 for j in range(0, self.columns)])   
     
-    def gaussian(self, eps=EPS): # Added eps parameter
+    def gaussian(self, eps=EPS):
         A = copy.deepcopy(self)
         m, n = A.rows, A.columns
 
@@ -379,7 +379,7 @@ class Matrix(Tensor):
 
             for i in range(j + 1, m):
                 factor = A[i][j]
-                if abs(factor) < eps:
+                if is_zero(factor, eps):
                     A[i][j] = 0.0
                     continue
                 A[i] = A[i] - factor * A[j]
@@ -387,13 +387,12 @@ class Matrix(Tensor):
         A = A.stabilize()
         return A
     
-    def gauss_jordan(self, eps=EPS): # Added eps parameter
-        A = copy.deepcopy(self).gaussian(eps=eps) # Pass eps here
+    def gauss_jordan(self, eps=EPS):
+        A = copy.deepcopy(self).gaussian(eps=eps) 
         
         for j in range(min(A.rows, A.columns)):
             for i in range(A.rows):
-                # Use is_nonapprox correctly (i is row, j is col)
-                if i != j and abs(A[i][j]) > eps: 
+                if i != j and is_nonzero(A[i][j], eps): 
                     A[i] = A[i] - A[i][j] * A[j]
 
         A = A.stabilize()
@@ -408,44 +407,36 @@ class Matrix(Tensor):
         else:
             raise TypeError("Matrix can only be partitioned by Matrix class")
         
-    def homogeneous(self, eps=1e-4): # Use the looser default
+    def homogeneous(self, eps=1e-4):
         A = copy.deepcopy(self)
-        # Pass the looser eps to gauss_jordan
         A = A.gauss_jordan(eps=eps) 
         m, n = A.rows, A.columns
 
-        # Zero out the matrix based on eps
-        for i in range(m):
-            for j in range(n):
-                if is_zero(A[i][j], eps):
-                    A[i][j] = 0.0
+        A = A.stabilize()
             
         pivot_map = [-1 for _ in range(n)]
         for i in range(m):
             for j in range(n):
                 if is_nonzero(A[i][j], eps):
-                    # Check if all previous in row are zero
                     if all(is_zero(A[i][k], eps) for k in range(j)):
                         pivot_map[j] = i
                         break
 
-        basis_vectors = []
+        solution = []
 
         for j in range(n):
-            if pivot_map[j] == -1: # It is a free variable
+            if pivot_map[j] == -1: 
                 v = Vector(*[0 for _ in range(n)])
                 v[j] = 1.0 
                 
                 for k in range(n):
-                    # FIX: Compare index k to -1, not using is_nonapprox
                     if pivot_map[k] != -1: 
                         r = pivot_map[k]
-                        # Correct sign: Ax = 0 => x_pivot = - A_pivot_free * x_free
                         v[k] = -A[r][j] 
                 
-                basis_vectors.append(v)
+                solution.append(v)
 
-        return basis_vectors
+        return solution
 
     def qr(self):
         A = copy.deepcopy(self)
@@ -725,6 +716,8 @@ class Matrix(Tensor):
             raise TypeError("A must be a Matrix")
         elif not isinstance(b, Vector):
             raise TypeError("b must be a Vector")
+        elif b == Vector.zero_vector(b.dimension):
+            return A.homogeneous()
         
         C = A.partition(Matrix(b).transpose()).gauss_jordan()
 
@@ -737,6 +730,27 @@ class Matrix(Tensor):
         
         x = Vector(*[C[i][C.columns - 1] for i in range(C.rows)])
         return x
+    
+    @staticmethod
+    def least_squares(A, b):
+        if not isinstance(A, Matrix):
+            raise TypeError("A must be a Matrix")
+        elif not isinstance(b, Vector):
+            raise TypeError("b must be a Vector")
+        AT = A.transpose()
+        normal = A.transpose() @ A
+        B = AT @ Matrix(b).transpose()
+        B = B.transpose()
+
+        return Matrix.solve(normal, *B)
+    
+    @staticmethod
+    def least_squares_error(A, b):
+        x = Matrix.least_squares(A, b)
+        Ax = ((A @ Matrix(x).transpose()).transpose())[0]
+        error = b - Ax
+
+        return error.norm
             
     @staticmethod
     def identity(n):
