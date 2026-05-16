@@ -19,31 +19,36 @@ For example, take the matrix:
 
 $$
 \begin{bmatrix}
-\mathbf{7} & 4 & 8 \\
-5 & \mathbf{7} & 3 \\
-7 & 8 & \mathbf{5}
-\end{bmatrix}^T
-=
-\begin{bmatrix}
-\mathbf{7} & 5 & 7 \\
-4 & \mathbf{7} & 8 \\
-8 & 3 & \mathbf{5}
-\end{bmatrix}
+\color{red}{7} & \color{blue}{4} & \color{teal}{8} \\
+\color{blue}{5} & \color{red}{7} & \color{purple}{3} \\
+\color{teal}{7} & \color{purple}{8} & \color{red}{5}
+\end{bmatrix} 
 $$
+
+Which is stored as a nested list [[7, 4, 8], [5, 7, 3], [7, 8, 5]], and lets say the operation to be performed is the transpose operation, so we obtain:
 
 $$
 \begin{bmatrix}
-\mathbf{7} & \color{red}{4} & \color{blue}{8} \\
-\color{red}{5} & \mathbf{7} & \color{green}{3} \\
-\color{blue}{7} & \color{green}{8} & \mathbf{5}
-\end{bmatrix}^T
-=
-\begin{bmatrix}
-\mathbf{7} & \color{red}{5} & \color{blue}{7} \\
-\color{red}{4} & \mathbf{7} & \color{green}{8} \\
-\color{blue}{8} & \color{green}{3} & \mathbf{5}
-\end{bmatrix}
+\color{red}{7} & \color{blue}{5} & \color{teal}{7} \\
+\color{blue}{4} & \color{red}{7} & \color{purple}{8} \\
+\color{teal}{8} & \color{purple}{3} & \color{red}{5}
+\end{bmatrix} 
 $$
+
+When this operation occurs, the original nested list is modified to return [[7, 5, 7], [4, 7, 8], [8, 3, 5]].
+
+# Mathematical Background
+
+This section explains how some linear algebra concepts have been implemented, as due to the nature of Python some mathematical concepts could not be directly translated into Python, and another method must be used. This section displays the alternative methods used.
+
+## Vectors
+**Linear Independence:** To check linear dependency of $n$ vectors, the vectors are placed into a matrix as rows, and whether its linearly independent or not is dependent on whether the rank of the matrix is equal to the number of rows.
+
+**Span:** To check whether $n$ vectors span $\mathbb{R}^n$, the vectors are placed into matrix as rows, and if the rank of the matrix is equal to the number of columns, they span $\mathbb{R}^n$
+
+
+
+
 
 
 
