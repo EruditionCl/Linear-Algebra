@@ -466,6 +466,8 @@ class Vector:
             bool: True if they form a basis.
         """
         return Vector.linear_independence(*args) and Vector.span(*args)
+
+    @staticmethod
     def gram_schmidt(*args):
 
         A = [*args]
