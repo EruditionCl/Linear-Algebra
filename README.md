@@ -46,6 +46,7 @@ This section explains how some linear algebra concepts have been implemented, as
 
 **Span:** To check whether $n$ vectors span $\mathbb{R}^n$, the vectors are placed into matrix as rows, and if the rank of the matrix is equal to the number of columns, they span $\mathbb{R}^n$
 
+**Householder reflection matrix:** For a nonzero vector $v$, the Householder reflection matrix is $$H=I-2\frac{vv^T}{v^Tv}$$. In this implementation, the vector $v$ is $$v = x - \lVert x \rVert e_1$$, which gives the rsult $$Hx = \lVert x \rVert e_1$$, where $e_1$ is the first standard basis vector. This property has several applications, for example eigenvalues and QR decomposition.
 
 
 
