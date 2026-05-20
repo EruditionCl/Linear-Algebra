@@ -51,7 +51,10 @@ This section explains how some linear algebra concepts have been implemented, as
 ## Matrices
 **Rank:** To calculate the rank of a matrix, it is first brought to Reduced Row Echelon form (RREF) and then the number of non zero rows are counted. 
 
-**QR Decomposition:** This implementation has two QR decompositions, normal QR and Householder QR. Householder QR applies Householder reflections to each subcolumn to zero out entries that allow R to be upper triangular. For example, let $x$ be a subcolumn fo the matrix $A$, then $$H_1 x = \lVert x \rVert e_1$$, which has every entry zeroed out except the first. So $$A_1 = H_1 A$$, where the first column of $A_1$ is the zeroed out column. Then, to form the second subcolumn, lets say $y$, we form the vector without the first element of the second column and repeat. We even
+**QR Decomposition:** This implementation has two QR decompositions, normal QR and Householder QR. Householder QR applies Householder reflections to each subcolumn to zero out entries that allow R to be upper triangular. For example, let $x$ be a subcolumn fo the matrix $A$, then $$H_1 x = \lVert x \rVert e_1$$, which has every entry zeroed out except the first. So $$A_1 = H_1 A$$, where the first column of $A_1$ is the zeroed out column. Then, to form the second subcolumn, lets say $y$, we form the vector without the first element of the second column and repeat. So finally we obtain $$R = H_n H_{n-1} ... H_2 H_1 A$$
+and since $$QR = A$$, Q must be $$Q = H_1 H_2 ... H_{n-1} H_n$$ due to orthogonality of H.
+
+
 
 
 
