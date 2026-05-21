@@ -125,6 +125,10 @@ $$A_{k+1} = R_k Q_k + \mu I$$
 
 where $I$ is the corresponding identity matrix, and $\mu$ is the eigenvalue of the bottom left 2x2 submatrix of the original matrix. This makes convergence faster because $A - \mu I$ becomes nearly singular causing the QR algorithm to make the subdiagonal entries zero out faster.
 
+# Limitations
+- Floating point arithmetic
+- Complex eigenvalues are not supported
+- QR algorithm doesn't converge for large matrices
 
 
 
