@@ -105,7 +105,25 @@ This process is applied iteratively until all the elements under the subdiagonal
 
 **Determinant:** To calculate the determinant, we use the property of triangular matrices and the fact that the determinant of a diagonal matrix is the product of the diagonal elements. To take advantage of this property, LU decomposition of the original matrix is performed, and the diagonal elements of the upper triangular matrix $U$ are multiplied. The $L$ matrix can be ignored because it only has 1's on its diagonals. To account for row switches, we the multiply by the sign of the determinant obtained in the LU decomposition, which may be either 1 or -1.
 
-**Eigenvalues:** In this implementation, before the eigenvalues of a matrix are calculated, the matrix is first converted into the Hessenberg form $H$. This is feasible due to the similarity transformations of the Hessenberg matrix, where the eigenvalues are a similarity invariant. 
+**Eigenvalues:** In this implementation, the eigenvalues are computed using a QR algorithm as follows
+
+$$A_k = Q_k R_k$$
+$$A_{k+1} = Q_k^T A_k Q_k = R_k Q_k$$
+
+Where the diagonal elements of $A$ eventually converge to the eigenvalues of the original matrix. The intuitive explanation of why this occurs is because, QR iteration repeatedly changes coordinates of the vectors into a basis that becomes more aligned with the eigenvectors. So as $Q_k$ approaches the eigenvector matrix $V$, then 
+
+$$Q_k^T A Q_k$$
+
+approaches
+
+$$V^{-1} A V = D$$
+
+To reduce computational complexity, the original matrix is first converted into a Hessenberg matrix. This does not change the eigenvalues since Hessenberg Matrices are formed via similarity transformations. To make convergence faster, a Wilkinson shift is included as follows
+
+$$A_k - \mu I = Q_k R_k$$
+$$A_{k+1} = R_k Q_k + \mu I$$
+
+where $I$ is the corresponding identity matrix, and $\mu$ is the eigenvalue of the bottom left 2x2 submatrix of the original matrix. This makes convergence faster because $A - \mu I$ becomes nearly singular causing the QR algorithm to make the subdiagonal entries zero out faster.
 
 
 
