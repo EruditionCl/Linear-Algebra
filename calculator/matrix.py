@@ -333,10 +333,6 @@ class Matrix:
                     for k in range(j + 1, n):
                         A[i][k] -= (A[i][j]) * A[j][k]
 
-        for i in range(0, A.rows):
-            for j in range(0, A.columns): 
-                A[i][j] += 0.0
-
         L = Matrix.identity(n)
         U = Matrix.identity(n)
 
