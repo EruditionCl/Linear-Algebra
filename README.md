@@ -130,19 +130,36 @@ where $I$ is the corresponding identity matrix, and $\mu$ is the eigenvalue of t
 - Complex eigenvalues are not supported
 - QR algorithm doesn't converge for large matrices
 
+# Example Usage
 
+```python
 
+from calculator import Matrix, Vector
 
+# Create matrices and vectors
+A = Matrix([1, 2], [3, 4])
+B = Matrix([2, 0], [1, 2])
+v = Vector(5, 11)
 
+# Matrix Addition and Multiplication
+C = A + B
+D = A @ B  # Matrix product
 
+E = Matrix([1, 2], [3, 4])
+b = Vector(5, 11)
 
+# System: 
+# 1x + 2y = 5
+# 3x + 4y = 11
 
+# Returns the solution Vector
+x = Matrix.solve(A, b) # [1.0, 2.0]
 
+# Calculate Eigenvalues using the QR algorithm
+eigenvalues = B.eigenvalues()
 
-
-
-
-
+# Compute the Compact Singular Value Decomposition
+U, Sigma, V_T = B.svd()
 
 
 
