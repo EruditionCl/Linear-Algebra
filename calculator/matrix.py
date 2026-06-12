@@ -612,14 +612,6 @@ class Matrix:
             V_T = Matrix(*v_T_list)
 
             return U, Sigma, V_T
-    
-    def pseudoinverse(self):
-        """Computes the Moore-Penrose pseudoinverse of the matrix.
-
-        Returns:
-            Matrix: The pseudoinverse of the matrix.
-        """
-        A = copy.deepcopy(self)
 
     def __eq__(self, other):
         """Checks equality with another matrix.
